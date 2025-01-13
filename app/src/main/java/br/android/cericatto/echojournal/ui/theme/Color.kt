@@ -12,6 +12,9 @@ val Pink40 = Color(0xFF7D5260)
 
 val splashBlue = Color(0xFF4A85FD)
 val splashGrey = Color(0xFFDDE4FE)
+val entriesListBackground = Color(0xFFF2F4FF)
+val audioBarChartWave = Color(0xFFBAC6E9)
+val audioBarChartBackground = Color(0xFFEEF0FF)
 
 val primaryLight = Color(0xFF475D92)
 val onPrimaryLight = Color(0xFFFFFFFF)
