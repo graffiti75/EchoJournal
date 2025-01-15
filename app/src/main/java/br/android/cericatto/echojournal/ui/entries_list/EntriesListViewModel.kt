@@ -5,12 +5,14 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
+import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.media.audiofx.Visualizer
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import br.android.cericatto.echojournal.audio.convertPcmToWav
 import br.android.cericatto.echojournal.ui.UiEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -23,12 +25,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
+import java.io.IOException
 import javax.inject.Inject
 import kotlin.math.abs
+
 
 @HiltViewModel
 class EntriesListViewModel @Inject constructor(
@@ -86,6 +86,24 @@ class EntriesListViewModel @Inject constructor(
 		}
 	}
 
+	private fun updateVisualizer(visualizer: Visualizer) {
+		_state.update { state ->
+			state.copy(
+				visualizer = visualizer
+			)
+		}
+	}
+
+	private fun getMediaPlayerInstance() {
+		if (_state.value.mediaPlayer == null) {
+			_state.update { state ->
+				state.copy(
+					mediaPlayer = MediaPlayer()
+				)
+			}
+		}
+	}
+
 	/**
 	 * Audio Methods
 	 */
@@ -101,7 +119,6 @@ class EntriesListViewModel @Inject constructor(
 				context, Manifest.permission.RECORD_AUDIO
 			) == PackageManager.PERMISSION_GRANTED
 		) {
-			Log.i("echo", "EntriesListViewModel.isRecordAudioPermissionGranted() -> Permission granted!")
 			viewModelScope.launch {
 				withContext(Dispatchers.IO) {
 					val bufferSize = AudioRecord.getMinBufferSize(
@@ -118,23 +135,7 @@ class EntriesListViewModel @Inject constructor(
 						bufferSize
 					)
 
-					val pcmFile = File(audioFile.parent, "recorded_audio.pcm")
-					val buffer = ByteArray(bufferSize)
-					pcmFile.outputStream().use { output ->
-						audioRecord.startRecording()
-						Log.i("echo", "EntriesListViewModel.isRecordAudioPermissionGranted() -> " +
-							"_state.value.isRecording: ${_state.value.isRecording}")
-						while (_state.value.isRecording) {
-							val bytesRead = audioRecord.read(buffer, 0, buffer.size)
-							if (bytesRead > 0) {
-								output.write(buffer, 0, bytesRead)
-							}
-						}
-						Log.i("echo", "EntriesListViewModel.isRecordAudioPermissionGranted() -> " +
-							"_state.value.isRecording: ${_state.value.isRecording}")
-						audioRecord.stop()
-						audioRecord.release()
-					}
+					val pcmFile = createPcmFile(audioFile, audioRecord, bufferSize)
 					val wavFile = File(audioFile.parent, "recorded_audio.wav")
 					convertPcmToWav(pcmFile, wavFile)
 					pcmFile.delete()
@@ -144,84 +145,89 @@ class EntriesListViewModel @Inject constructor(
 		}
 	}
 
-	private fun convertPcmToWav(pcmFile: File, wavFile: File, sampleRate: Int = 44100, channels: Int = 1, bitsPerSample: Int = 16) {
-		val pcmSize = pcmFile.length().toInt()
-		val wavHeader = ByteArray(44)
+	private fun playAudio(audioFile: File, isPlaying: Boolean) {
+		Log.i("echo", "EntriesListViewModel.playAudio() -> audioFile: $audioFile")
+		Log.i("echo", "EntriesListViewModel.playAudio() -> absolutePath: ${audioFile.absolutePath}")
+		viewModelScope.launch {
+			withContext(Dispatchers.IO) {
+				getMediaPlayerInstance()
+				_state.value.mediaPlayer?.let { player ->
+					try {
+						player.setDataSource(audioFile.absolutePath)
+						if (!player.isPlaying) {
+							player.setOnPreparedListener { mp: MediaPlayer -> mp.start() }
+							player.prepareAsync() // Non-blocking
+						}
+					} catch (e: IOException) {
+						e.printStackTrace()
+					} catch (e: IllegalStateException) {
+						e.printStackTrace()
+					}
 
-		// Write WAV header
-		ByteBuffer.wrap(wavHeader).order(ByteOrder.LITTLE_ENDIAN).apply {
-			// ChunkID
-			put("RIFF".toByteArray())
-			putInt(36 + pcmSize) // ChunkSize
-			put("WAVE".toByteArray()) // Format
-			put("fmt ".toByteArray()) // Subchunk1ID
-			putInt(16) // Subchunk1Size
-			putShort(1) // AudioFormat (PCM)
-			putShort(channels.toShort()) // NumChannels
-			putInt(sampleRate) // SampleRate
-			putInt(sampleRate * channels * bitsPerSample / 8) // ByteRate
-			putShort((channels * bitsPerSample / 8).toShort()) // BlockAlign
-			putShort(bitsPerSample.toShort()) // BitsPerSample
-			put("data".toByteArray()) // Subchunk2ID
-			putInt(pcmSize) // Subchunk2Size
-		}
-
-		// Write WAV file
-		FileOutputStream(wavFile).use { output ->
-			output.write(wavHeader) // Write header
-			FileInputStream(pcmFile).use { input ->
-				val buffer = ByteArray(1024)
-				var bytesRead: Int
-				while (input.read(buffer).also { bytesRead = it } != -1) {
-					output.write(buffer, 0, bytesRead)
+					initVisualizer()
+					player.setOnCompletionListener {
+						player.stop()
+						player.reset()
+						_state.value.visualizer?.release()
+						updateIsPlaying(isPlaying)
+					}
 				}
 			}
 		}
 	}
 
-	private fun playAudio(audioFile: File, isPlaying: Boolean) {
-		Log.i("echo", "EntriesListViewModel.playAudio() -> audioFile: $audioFile")
-		viewModelScope.launch {
-			withContext(Dispatchers.IO) {
-				val mediaPlayer = _state.value.mediaPlayer.apply {
-					setDataSource(audioFile.absolutePath)
-					prepare()
-					start()
-				}
-
-				val visualizer = Visualizer(_state.value.mediaPlayer.audioSessionId).apply {
-					captureSize = Visualizer.getCaptureSizeRange()[1]
-					setDataCaptureListener(
-						object : Visualizer.OnDataCaptureListener {
-							override fun onWaveFormDataCapture(
-								visualizer: Visualizer?,
-								waveform: ByteArray?,
-								samplingRate: Int
-							) {
-								if (waveform != null) {
-									updateAmplitudes(waveform.map { abs(it.toInt()) })
-								}
-							}
-
-							override fun onFftDataCapture(
-								visualizer: Visualizer?,
-								fft: ByteArray?,
-								samplingRate: Int
-							) {}
-						},
-						Visualizer.getMaxCaptureRate() / 2,
-						true,
-						false
-					)
-				}
-				visualizer.enabled = true
-
-				mediaPlayer.setOnCompletionListener {
-					mediaPlayer.release()
-					visualizer.release()
-					updateIsPlaying(isPlaying)
+	private fun createPcmFile(
+		audioFile: File,
+		audioRecord: AudioRecord,
+		bufferSize: Int
+	): File {
+		val pcmFile = File(audioFile.parent, "recorded_audio.pcm")
+		val buffer = ByteArray(bufferSize)
+		pcmFile.outputStream().use { output ->
+			audioRecord.startRecording()
+			while (_state.value.isRecording) {
+				val bytesRead = audioRecord.read(buffer, 0, buffer.size)
+				if (bytesRead > 0) {
+					output.write(buffer, 0, bytesRead)
 				}
 			}
+			audioRecord.stop()
+			audioRecord.release()
+		}
+		return pcmFile
+	}
+
+	private fun initVisualizer() {
+		getMediaPlayerInstance()
+		val player = _state.value.mediaPlayer
+		if (player != null) {
+			val visualizer = Visualizer(player.audioSessionId).apply {
+				captureSize = Visualizer.getCaptureSizeRange()[1]
+				setDataCaptureListener(
+					object : Visualizer.OnDataCaptureListener {
+						override fun onWaveFormDataCapture(
+							visualizer: Visualizer?,
+							waveform: ByteArray?,
+							samplingRate: Int
+						) {
+							if (waveform != null) {
+								updateAmplitudes(waveform.map { abs(it.toInt()) })
+							}
+						}
+
+						override fun onFftDataCapture(
+							visualizer: Visualizer?,
+							fft: ByteArray?,
+							samplingRate: Int
+						) {}
+					},
+					Visualizer.getMaxCaptureRate() / 2,
+					true,
+					false
+				)
+			}
+			visualizer.enabled = true
+			updateVisualizer(visualizer)
 		}
 	}
 }
