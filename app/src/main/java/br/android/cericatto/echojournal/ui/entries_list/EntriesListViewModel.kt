@@ -7,7 +7,6 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaPlayer
 import android.media.MediaRecorder
-import android.media.audiofx.Visualizer
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
@@ -27,8 +26,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import javax.inject.Inject
-import kotlin.math.abs
-
 
 @HiltViewModel
 class EntriesListViewModel @Inject constructor(
@@ -74,22 +71,6 @@ class EntriesListViewModel @Inject constructor(
 		_state.update { state ->
 			state.copy(
 				isPlaying = isPlaying
-			)
-		}
-	}
-
-	private fun updateAmplitudes(amplitudes: List<Int>) {
-		_state.update { state ->
-			state.copy(
-				amplitudes = amplitudes
-			)
-		}
-	}
-
-	private fun updateVisualizer(visualizer: Visualizer) {
-		_state.update { state ->
-			state.copy(
-				visualizer = visualizer
 			)
 		}
 	}
@@ -164,11 +145,9 @@ class EntriesListViewModel @Inject constructor(
 						e.printStackTrace()
 					}
 
-					initVisualizer()
 					player.setOnCompletionListener {
 						player.stop()
 						player.reset()
-						_state.value.visualizer?.release()
 						updateIsPlaying(isPlaying)
 					}
 				}
@@ -195,39 +174,5 @@ class EntriesListViewModel @Inject constructor(
 			audioRecord.release()
 		}
 		return pcmFile
-	}
-
-	private fun initVisualizer() {
-		getMediaPlayerInstance()
-		val player = _state.value.mediaPlayer
-		if (player != null) {
-			val visualizer = Visualizer(player.audioSessionId).apply {
-				captureSize = Visualizer.getCaptureSizeRange()[1]
-				setDataCaptureListener(
-					object : Visualizer.OnDataCaptureListener {
-						override fun onWaveFormDataCapture(
-							visualizer: Visualizer?,
-							waveform: ByteArray?,
-							samplingRate: Int
-						) {
-							if (waveform != null) {
-								updateAmplitudes(waveform.map { abs(it.toInt()) })
-							}
-						}
-
-						override fun onFftDataCapture(
-							visualizer: Visualizer?,
-							fft: ByteArray?,
-							samplingRate: Int
-						) {}
-					},
-					Visualizer.getMaxCaptureRate() / 2,
-					true,
-					false
-				)
-			}
-			visualizer.enabled = true
-			updateVisualizer(visualizer)
-		}
 	}
 }

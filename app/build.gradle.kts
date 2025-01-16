@@ -65,6 +65,9 @@ dependencies {
 	// SplashScreen
 	implementation(libs.androidx.core.splashscreen)
 
+	// Icons
+	implementation(libs.material.icons)
+
 	testImplementation(libs.junit)
 	androidTestImplementation(libs.androidx.junit)
 	androidTestImplementation(libs.androidx.espresso.core)

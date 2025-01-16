@@ -1,8 +1,6 @@
 package br.android.cericatto.echojournal.ui.entries_list
 
 import android.Manifest
-import android.media.audiofx.Visualizer
-import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -10,9 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -22,12 +18,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,14 +28,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import br.android.cericatto.echojournal.R
-import br.android.cericatto.echojournal.audio.playback.BiluPlayer
-import br.android.cericatto.echojournal.audio.record.BiluRecorder
-import br.android.cericatto.echojournal.ui.theme.audioBarChartBackground
+import br.android.cericatto.echojournal.ui.theme.audioBarBackgroundColor
 import br.android.cericatto.echojournal.ui.theme.audioBarChartWave
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import java.io.File
-import kotlin.math.abs
 
 @Composable
 fun RequestRecordAudioPermission(viewModel: EntriesListViewModel) {
@@ -110,14 +98,11 @@ fun AudioPlayer(
 	file: File,
 	modifier: Modifier
 ) {
-	val context = LocalContext.current
 	Column(
 		horizontalAlignment = Alignment.CenterHorizontally,
 		verticalArrangement = Arrangement.Center,
 		modifier = modifier
 	) {
-//		SimpleAudioRecorder(file)
-		//
 		AudioRecorderScreen(
 			onAction = onAction,
 			state = state,
@@ -127,87 +112,6 @@ fun AudioPlayer(
 			state = state,
 			file = file
 		)
-		 //
-		/*
-		AudioPlayerWithVisualizer(
-			context = context,
-			audioResId = R.raw.audio
-		)
-		 */
-	}
-}
-
-@Composable
-fun SimpleAudioRecorder(
-	file: File,
-) {
-	val context = LocalContext.current
-	val recorder = remember { BiluRecorder(context) }
-	val player = remember { BiluPlayer(context) }
-
-	var isRecording by remember { mutableStateOf(false) }
-	var isPlaying by remember { mutableStateOf(false) }
-	val scope = rememberCoroutineScope()
-
-	/*
-	var amplitudes by remember { mutableStateOf(listOf<Int>()) }
-
-	// Set up the amplitude listener for the player
-	DisposableEffect(player) {
-		player.setAmplitudeListener { amplitudeList ->
-			amplitudes = amplitudeList.takeLast(30) // Keep only the last 30 amplitudes
-		}
-		onDispose {
-			player.stop()
-		}
-	}
-	*/
-
-	Column(
-		modifier = Modifier.fillMaxSize(),
-		verticalArrangement = Arrangement.Center,
-		horizontalAlignment = Alignment.CenterHorizontally
-	) {
-		Button(onClick = {
-			recorder.start(file)
-			isRecording = true
-		}) {
-			Text(text = "Start recording")
-		}
-		Button(onClick = {
-			recorder.stop()
-			isRecording = false
-		}) {
-			Text(text = "Stop recording")
-		}
-		Button(onClick = {
-			player.playFile(file)
-			isPlaying = true
-		}) {
-			Text(text = "Play")
-		}
-		Button(onClick = {
-			player.stop()
-			isPlaying = false
-		}) {
-			Text(text = "Stop playing")
-		}
-		Spacer(modifier = Modifier.height(16.dp))
-
-		/*
-		LaunchedEffect(isPlaying) {
-			scope.launch {
-				while (isPlaying &&
-					player.isPlaying() &&
-					player.currentPosition() < 0.99
-				) {
-					delay(1000L) // Update every second
-				}
-			}
-		}
-
-		BarChart(amplitudes = amplitudes)
-		 */
 	}
 }
 
@@ -217,7 +121,7 @@ fun AudioRecorderScreen(
 	onAction: (EntriesListAction) -> Unit,
 	file: File
 ) {
-	Log.i("echo", "AudioRecorderScreen -> state.isRecording: ${state.isRecording}")
+//	Log.i("echo", "AudioRecorderScreen -> state.isRecording: ${state.isRecording}")
 	Column(
 		modifier = Modifier
 			.fillMaxWidth()
@@ -265,45 +169,8 @@ fun AudioVisualizer(
 	state: EntriesListState,
 	file: File
 ) {
-	var amplitudes by remember { mutableStateOf(listOf<Int>()) }
-	val scope = rememberCoroutineScope()
-
 	/*
-	DisposableEffect(file) {
-		val visualizer = Visualizer(state.mediaPlayer.audioSessionId).apply {
-			captureSize = Visualizer.getCaptureSizeRange()[1]
-			setDataCaptureListener(
-				object : Visualizer.OnDataCaptureListener {
-					override fun onWaveFormDataCapture(
-						visualizer: Visualizer?,
-						waveform: ByteArray?,
-						samplingRate: Int
-					) {
-						if (waveform != null) {
-							amplitudes = waveform.map { abs(it.toInt()) }
-						}
-					}
-
-					override fun onFftDataCapture(
-						visualizer: Visualizer?,
-						fft: ByteArray?,
-						samplingRate: Int
-					) {}
-				},
-				Visualizer.getMaxCaptureRate() / 2,
-				true,
-				false
-			)
-		}
-		visualizer.enabled = true
-		onDispose {
-			state.mediaPlayer.release()
-			visualizer.release()
-		}
-	}
-	 */
-
-	//
+	val scope = rememberCoroutineScope()
 	LaunchedEffect(state.isPlaying) {
 		scope.launch {
 			while (
@@ -316,7 +183,15 @@ fun AudioVisualizer(
 		}
 	}
 	BarChart(amplitudes = state.amplitudes)
-	 //
+	 */
+	val context = LocalContext.current
+	/*
+	WavBarChart(
+		uri = file.toUri(),
+		context = context
+	)
+	 */
+	AudioPlayerWithControls(file = file)
 }
 
 @Composable
@@ -332,7 +207,7 @@ fun BarChart(
 
 	Row(
 		modifier = Modifier
-			.background(audioBarChartBackground)
+			.background(audioBarBackgroundColor)
 			.fillMaxWidth()
 			.height(60.dp),
 		horizontalArrangement = Arrangement.SpaceEvenly
